@@ -288,6 +288,77 @@ class GmailStorer(object): #pylint:disable=R0902,R0904,R0914
 
         return subject, msgid, x_gmail_recv
 
+    def get_recent_chat_ids(self, fromdatetime=None):
+        """
+           Get only chats dirs
+        """
+        # first create a normal dir and sort it below with an OrderedDict
+        # beware orderedDict preserve order by insertion and not by key order
+        gmail_ids = {}
+
+        chat_dir = '%s/%s' % (self._db_dir, self.CHATS_AREA)
+        if os.path.exists(chat_dir):
+            the_iter = gmvault_utils.ordered_dirwalk(chat_dir, "*.meta")
+
+            #get recent ids
+            for filepath in the_iter:
+                directory, fname = os.path.split(filepath)
+                recent_dir = fromdatetime.strftime('%Y') + '-' + fromdatetime.strftime('%m')
+                if recent_dir in directory:
+                    if self.unbury_metadata(os.path.splitext(fname)[0])['internal_date'] > fromdatetime:
+                        gmail_ids[long(os.path.splitext(fname)[0])] = os.path.basename(directory)
+
+            #sort by key
+            #used own orderedDict to be compliant with version 2.5
+            gmail_ids = collections_utils.OrderedDict(
+                sorted(gmail_ids.items(), key=lambda t: t[0]))
+
+        return gmail_ids
+
+
+    def get_recent_gmail_ids(self, pivot_dir=None,
+                                   ignore_sub_dir=('chats',), fromdatetime=None):
+        """
+           get all existing gmail_ids from the database within the passed month
+           and all posterior months
+        """
+        # first create a normal dir and sort it below with an OrderedDict
+        # beware orderedDict preserve order by insertion and not by key order
+        gmail_ids = {}
+
+        if pivot_dir is None:
+            #the_iter = gmvault_utils.dirwalk(self._db_dir, "*.meta")
+            the_iter = gmvault_utils.ordered_dirwalk(self._db_dir, "*.meta",
+                                                     ignore_sub_dir)
+        else:
+
+            # get all yy-mm dirs to list
+            dirs = gmvault_utils.get_all_dirs_posterior_to(
+                pivot_dir, gmvault_utils.get_all_dirs_under(self._db_dir,
+                                                            ignore_sub_dir))
+
+            #create all iterators and chain them to keep the same interface
+            iter_dirs = [gmvault_utils.ordered_dirwalk('%s/%s' %
+                         (self._db_dir, the_dir), "*.meta", ignore_sub_dir)
+                         for the_dir in dirs]
+
+            the_iter = itertools.chain.from_iterable(iter_dirs)
+
+        #get recent ids
+        for filepath in the_iter:
+            directory, fname = os.path.split(filepath)
+            recent_dir = fromdatetime.strftime('%Y') + '-' + fromdatetime.strftime('%m')
+            if recent_dir in directory:
+                if self.unbury_metadata(os.path.splitext(fname)[0])['internal_date'] > fromdatetime:
+                    gmail_ids[long(os.path.splitext(fname)[0])] = os.path.basename(directory)
+
+        #sort by key
+        #used own orderedDict to be compliant with version 2.5
+        gmail_ids = collections_utils.OrderedDict(sorted(gmail_ids.items(),
+                                                         key=lambda t: t[0]))
+
+        return gmail_ids
+
     def get_all_chats_gmail_ids(self):
         """
            Get only chats dirs 

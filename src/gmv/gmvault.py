@@ -633,9 +633,15 @@ class GMVaulter(object):
             self._sync_chats(imap_req, compress = compress_on_disk, restart = restart)
         else:
             LOG.critical("\nSkip chats synchronization.\n")
-        
+
+        #check if quick sync is enabled
+        if imap_req['mode'] == 'quick':
+            mode_quick = True
+        else:
+            mode_quick = False
+
         #delete supress emails from DB since last sync
-        self.check_clean_db(db_cleaning)
+        self.check_clean_db(db_cleaning, mode_quick)
        
         LOG.debug("Sync operation performed in %s.\n" \
                      % (self.timer.seconds_to_human_time(self.timer.elapsed())))
@@ -680,8 +686,16 @@ class GMVaulter(object):
         
         LOG.critical("Will delete %s %s(s) from gmvault db.\n" % (len(db_gmail_ids), msg_type) )
         for gm_id in db_gmail_ids:
-            LOG.critical("gm_id %s not in the Gmail server. Delete it." % (gm_id))
-            self.gstorer.delete_emails([(gm_id, db_gmail_ids_info[gm_id])], msg_type)
+            print(str(self.gstorer.unbury_metadata(gm_id)['internal_date']) + ": " + self.gstorer.unbury_metadata(gm_id)['subject'])
+        ok_to_proceed = ''
+
+        if len(db_gmail_ids) > 0:
+            ok_to_proceed = raw_input("Proceed to delete [y/N]: ")
+
+        if ok_to_proceed == 'y':
+            for gm_id in db_gmail_ids:
+                LOG.critical("gm_id %s not in the Gmail server. Delete it." % (gm_id))
+                self.gstorer.delete_emails([(gm_id, db_gmail_ids_info[gm_id])], msg_type)
         
     def search_on_date(self, a_eml_date):
         """
@@ -738,7 +752,7 @@ class GMVaulter(object):
         
         return new_gmail_ids
         
-    def check_clean_db(self, db_cleaning):
+    def check_clean_db(self, db_cleaning, mode_quick):
         """
            Check and clean the database (remove file that are not anymore in Gmail)
         """
@@ -762,7 +776,12 @@ class GMVaulter(object):
             timer = gmvault_utils.Timer() # needed for enhancing the user information
             timer.start()
             
-            db_gmail_ids_info = self.gstorer.get_all_existing_gmail_ids()
+            if mode_quick:
+                today = datetime.datetime.today()
+                begin = today - datetime.timedelta(gmvault_utils.get_conf_defaults().getint("Sync", "quick_days", 8))
+                db_gmail_ids_info = self.gstorer.get_recent_gmail_ids(fromdatetime=begin)
+            else:
+                db_gmail_ids_info = self.gstorer.get_all_existing_gmail_ids()
         
             LOG.critical("Found %s email(s) in the Gmvault db.\n" % (len(db_gmail_ids_info)) )
         
@@ -781,7 +800,13 @@ class GMVaulter(object):
             # get all chats ids
             if self.src.is_visible('CHATS'):
             
-                db_gmail_ids_info = self.gstorer.get_all_chats_gmail_ids()
+                if mode_quick:
+                    today = datetime.datetime.today()
+                    begin = today - datetime.timedelta(
+                        gmvault_utils.get_conf_defaults().getint("Sync", "quick_days", 8))
+                    db_gmail_ids_info = self.gstorer.get_recent_chat_ids(fromdatetime=begin)
+                else:
+                    db_gmail_ids_info = self.gstorer.get_all_chats_gmail_ids()
                 
                 LOG.critical("Found %s chat(s) in the Gmvault db.\n" % (len(db_gmail_ids_info)) )
                 
